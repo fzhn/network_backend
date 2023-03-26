@@ -10,6 +10,8 @@ extern "C" {
 
 class Network;
 
+enum network_mode {TCP, UDP, RDMA, SHMEM};
+
 struct socket{
     int ID;
 };
@@ -40,6 +42,7 @@ struct connection_info{
     const socket_addr remote_addr;
     int lsocket;
     int socket;
+    network_mode mode;
 };
 
 struct listen_socket;
@@ -57,12 +60,18 @@ struct domain_ctx{
 
 enum network_type {NONE, POSIX_SOCKETS, LIBFABRIC, UCX};
 
-enum network_mode {TCP, UDP, RDMA, SHMEM};
+struct buf_struct {
+    char* buf;
+    size_t size;
+    size_t pos;
+    size_t left_to_read;
+    std::vector<char> buf_array;
+};
 
 struct network_config {
     bool zero_copy;
-    uint64_t num_buffers;
-    uint64_t buffersize;
+    size_t num_buffers;
+    size_t buffersize;
     network_mode mode;
     void* usr_ctx;
 

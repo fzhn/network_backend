@@ -24,6 +24,7 @@ void Eventloop::stop(){
 
 
 void Eventloop::register_fd(ev_context& ctx){
+    std::unique_lock<std::mutex> lck(m_fd_mutex);
     struct epoll_event ev;
     int ev_fd = ctx.fd;
     m_polled_fids[ev_fd] = ctx;
@@ -43,6 +44,7 @@ void Eventloop::register_fd(ev_context& ctx){
 }
 
 void Eventloop::remove_fd(int fd){
+  std::unique_lock<std::mutex> lck(m_fd_mutex);
   if (std::find(m_open_fds.begin(), m_open_fds.end(), fd) != m_open_fds.end()){
     close(fd);
     epoll_ctl(m_epollfd, EPOLL_CTL_DEL, fd, NULL);

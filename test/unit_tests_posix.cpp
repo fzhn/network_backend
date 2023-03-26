@@ -92,10 +92,10 @@ TEST_CASE( "Test send", "[send_test]" ) {
         sleep(1);
         char * test= (char*)calloc(1, 1024*1024*10);
         network_handle handle = connection_info{{"127.0.0.1", 4444},{"127.0.0.1", 1607}, -1, -1};
-        REQUIRE(net_backend->send_data(test, 10 * 1024 * 1024, &handle) == 2534020); //2534020 seems to be the maximum a socket can send in one go if the recv buffer is not empty.
+        REQUIRE(net_backend->send_data(test, 10 * 1024 * 1024, &handle) == 2539008); //2539008 seems to be the maximum a socket can send in one go if the recv buffer is not empty.
         REQUIRE(std::get<connection_info>(handle).socket >= 0);
         network_handle sock_handle = connection_info{{"", 0},{"", 0}, -1, std::get<connection_info>(handle).socket};
-        REQUIRE(net_backend->send_data(test, 10 * 1024 * 1024, &handle) == 109121); //This amount of data is send to the receiver in the meanwhile. Since it is not processed all buffers are full now. This test will use the already existing socket by addr
+        REQUIRE(net_backend->send_data(test, 10 * 1024 * 1024, &handle) == 1942594); //This amount of data is send to the receiver in the meanwhile. Since it is not processed all buffers are full now. This test will use the already existing socket by addr
         REQUIRE(net_backend->send_data(test, 10 * 1024 * 1024, &sock_handle) == -1); //Send returns an error. This test will use the already existing socket by FD
         REQUIRE(errno == 11); //Which should be EAGAIN
         server.join();

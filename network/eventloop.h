@@ -8,6 +8,7 @@
 #include <rdma/fi_domain.h>
 #include <fcntl.h>
 #include <functional>
+#include <mutex>
 
 #include "networkUtilities.h"
 
@@ -78,6 +79,7 @@ class Eventloop {
     std::vector<int> m_open_fds;
     std::vector<ev_context> m_ev_contexts;
     bool ev_should_stop = false;
+    std::mutex m_fd_mutex;
 
     void process_event(struct ev_context* evc);
   public:

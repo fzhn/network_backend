@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <map>
 #include <stdexcept>
+#include <utility>
 
 #include "networkUtilities.h"
 #include "eventloop.h"
@@ -72,8 +73,12 @@ public:
 private:
     Eventloop m_evloop;
     std::string m_name;
+    std::mutex m_mux;
+    size_t m_buffersize;
     std::vector<int> m_lsockets;
     std::map<socket_addr, int> m_connection_map;
+    std::map<int, std::mutex> m_send_mutex_map;
+    std::map<int, buf_struct> m_buf_map;
     //Callbacks
     std::function<void(connection_info info, char* data, int size, Network* backend, void* usr_ctx)> m_on_data_cb;
     std::function<void(connection_info info,Network* backend, void* usr_ctx)> m_on_connnection_established_cb;
@@ -81,6 +86,9 @@ private:
     std::function<void(connection_info info,Network* backend, void* usr_ctx)> m_on_connection_refused_cb;
 
     int createListenSocket(connection_info* connection);
+    ssize_t send_msg(int socket, char* data, size_t size);
+    void checkRecvReturn(int ret);
+    void send_connect(connection_info& handle);
     void onConnectionRequest(int lsocket, void* data);
     void onConnectionClosed(int socket, void* data);
     void onData(int socket, void* data);

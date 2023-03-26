@@ -9,7 +9,7 @@ std::unique_ptr<Network> Network::create(network_type type, network_config& conf
     } else if (type == POSIX_SOCKETS){
         return std::make_unique<NetworkPosix>(config);
     } else {
-        log_error("Error: unknown network type. Using unix sockets as fallback.");
+        log_error("Error: unknown network type. Using posix sockets as fallback.");
         return std::make_unique<NetworkPosix>(config);
     }
 }
