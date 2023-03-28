@@ -6,9 +6,10 @@
 
 void on_data(connection_info hdl, char* data, int size, Network* backend, void * ctx){
     std::string s;
-    strcmp(data, "Ping!") ? s = "Ping!" : s = "Pong!";
+    std::string data_string(data, size);
+    strcmp(data_string.c_str(), "Ping!") ? s = "Ping!" : s = "Pong!";
     network_handle handle = hdl;
-    std::cout << "Message \"" << data << "\" received on socket: " << hdl.socket << ", sending back: " << s << std::endl;
+    std::cout << "Message \"" << data_string << "\" received on socket: " << hdl.socket << ", sending back: " << s << std::endl;
     usleep(100000);
     try{
       backend->send_data(s.c_str(), s.length()+1, &handle);
@@ -37,12 +38,21 @@ class PingPong{
         m_net_backend->run("Server");
       } else {
         network_handle handle = connection_info{{"127.0.0.1", 54321},{"127.0.0.1", 1337}, 0, 0, TCP};
-        size_t test = 5;
+        size_t test = 0004;
         char header[sizeof(size_t)];
         snprintf(header, sizeof(header), "%zu", test);
-        std::string s2 = header;
-        std::string s = "PingPong!" + s2 + "Bam!";
-        m_net_backend->send_data(s.c_str(), s.length()+1, &handle);
+        char teststring[128];
+        strcpy(teststring, "PingPong!");
+        strcat(teststring, "00000004");
+        strcat(teststring, "Bam!");
+        //std::string s = "PingPong!" + header + "Bam!";
+        int ret = m_net_backend->send_data(teststring, 21, &handle);
+        std::cout << "Initial send returned: " << ret << " last char " << std::endl;
+        for(int i = 0; i <21; i++){
+          std::cout << teststring[i];
+        }
+        std::cout << std::endl;
+
         m_net_backend->run("client");
       }
 

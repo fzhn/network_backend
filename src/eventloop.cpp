@@ -30,7 +30,7 @@ void Eventloop::register_fd(ev_context& ctx){
     m_polled_fids[ev_fd] = ctx;
     ev.events = (EPOLLIN | EPOLLRDHUP);
     ev.data.ptr = &m_polled_fids[ev_fd];
-    int rc = fcntl(ev_fd, F_SETFL, fcntl(ev_fd, F_GETFL) | O_NONBLOCK );
+    int rc = fcntl(ev_fd, F_SETFL, fcntl(ev_fd, F_GETFL) | O_NONBLOCK | EFD_SEMAPHORE);
     if (rc < 0) {
       log_error("Failed to change flags (incl. O_NONBLOCK) of file descriptor %d.", m_epollfd);
     }
@@ -71,7 +71,7 @@ void Eventloop::evloop_run(){
 
     for(int i = 0; i < nevents; ++i)
     {
-      log_debug("event type: %x from fd %d", m_events[i].events, m_events[i].data.fd);
+      log_debug("event type: %x from fd %d", m_events[i].events, ((ev_context*)m_events[i].data.ptr)->fd);
       process_event((ev_context*)(m_events[i].data.ptr));
       if(m_events[i].events & EPOLLRDHUP)
       {

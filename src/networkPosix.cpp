@@ -50,12 +50,12 @@ int NetworkPosix::createListenSocket(connection_info* connection){
     std::cout << "Listening at address: " << inet_ntoa(local_addr.sin_addr) << " and port: " << ntohs(local_addr.sin_port) << std::endl;
     connection->lsocket = listensocket;
     m_lsockets.push_back(listensocket);
-    auto ctx = ev_context{listensocket, NULL, std::bind(&NetworkPosix::onConnectionRequest, this, std::placeholders::_1, std::placeholders::_2)};
+    auto ctx = ev_context{listensocket, NULL, std::bind(&NetworkPosix::on_connection_request, this, std::placeholders::_1, std::placeholders::_2)};
     m_evloop.register_fd(ctx);
     return listensocket;
 }
 
-void NetworkPosix::onConnectionRequest(int lsocket, void* data){
+void NetworkPosix::on_connection_request(int lsocket, void* data){
     sockaddr_in remote;
     socklen_t remoteSize = sizeof(remote);
     int socket = accept(lsocket, (struct sockaddr *)&remote, &remoteSize);
@@ -75,7 +75,7 @@ void NetworkPosix::onConnectionRequest(int lsocket, void* data){
     m_buf_map[socket].buf_array.resize(m_buffersize, '\0');
     m_buf_map[socket].buf = m_buf_map[socket].buf_array.data();
 
-    auto ctx = ev_context{socket, NULL, std::bind(&NetworkPosix::onData, this, std::placeholders::_1, std::placeholders::_2), std::bind(&NetworkPosix::onConnectionClosed, this, std::placeholders::_1, std::placeholders::_2)};
+    auto ctx = ev_context{socket, NULL, std::bind(&NetworkPosix::on_data, this, std::placeholders::_1, std::placeholders::_2), std::bind(&NetworkPosix::on_connection_closed, this, std::placeholders::_1, std::placeholders::_2)};
     m_evloop.register_fd(ctx);
     m_connection_map[socket_addr{inet_ntoa(remote.sin_addr), ntohs(remote.sin_port)}] = socket;
     if(m_on_connnection_established_cb != NULL){
@@ -83,7 +83,7 @@ void NetworkPosix::onConnectionRequest(int lsocket, void* data){
     }
 }
 
-void NetworkPosix::onConnectionClosed(int socket, void* data){
+void NetworkPosix::on_connection_closed(int socket, void* data){
     connection_info handle{{"", 0},{"", 0}, -1, socket};
     if(m_on_connection_closed_cb != NULL){
         m_on_connection_closed_cb(handle, this, m_config.usr_ctx);
@@ -96,7 +96,7 @@ void NetworkPosix::onConnectionClosed(int socket, void* data){
     handle.socket = -1;
 }
 
-void NetworkPosix::checkRecvReturn(int ret){
+void NetworkPosix::check_recv_return(int ret){
     if (ret == -1){
         log_error("There was a connection issue for the %s", m_name.c_str());
     } else if (ret < 0){
@@ -109,69 +109,48 @@ void NetworkPosix::checkRecvReturn(int ret){
 } 
 
 
-void NetworkPosix::onData(int socket, void* data){
+void NetworkPosix::on_data(int socket, void* data){
     if(m_buf_map.count(socket) == 0){
         log_error("No buffer associated to this socket: %d.", socket);
         return;
     } 
     auto buf_data = &m_buf_map.at(socket);
-    int bytesRecv = 0;
     char* buf = buf_data->buf + buf_data->pos;
-    if (buf_data->left_to_read > 0){
-        bytesRecv = recv(socket, buf, buf_data->left_to_read, MSG_DONTWAIT);
-        if(bytesRecv > 0){
-            buf_data->pos += bytesRecv;
-            if (bytesRecv < buf_data->left_to_read) {
-                buf_data->left_to_read -= bytesRecv;
-                return;
+    int bytes_recv = recv(socket, buf, buf_data->size - buf_data->pos, MSG_DONTWAIT) + buf_data->pos; 
+    log_debug("%d bytes read (including leftover form previous read)(size: %d, position: %d) \n", bytes_recv, buf_data->size, buf_data->pos);
+    if (bytes_recv <= 0) {
+        check_recv_return(bytes_recv);
+        buf_data->pos = 0;
+        buf_data->left_to_read = 0;
+        return;
+    }
+    size_t current_pos = 0;
+    while (current_pos < bytes_recv){
+        log_debug("Entering while loop for new iteration. Starting at: %d, total bytes received: %d", current_pos, bytes_recv);
+        if ((bytes_recv - current_pos) < sizeof(size_t)){
+            std::copy(buf_data->buf + current_pos, buf_data->buf + bytes_recv, buf_data->buf);
+            buf_data->left_to_read = sizeof(size_t) - bytes_recv;
+            buf_data->pos = bytes_recv;
+            return;
+        }
+        size_t msg_size = std::strtol(buf_data->buf + current_pos, NULL, 10);
+        if ((bytes_recv - current_pos - sizeof(size_t)) < msg_size){
+            if(current_pos > 0){
+                std::copy(buf_data->buf + current_pos, buf_data->buf + bytes_recv, buf_data->buf);
             }
-            if (buf_data->pos > sizeof(size_t)){
-                m_config.on_data_cb(connection_info{{"", 0},{"", 0}, -1, socket, TCP}, buf_data->buf, buf_data->pos, this, m_config.usr_ctx);
-                buf_data->pos = 0;
-                buf_data->left_to_read = 0;
-                return;
-            }
+
+            buf_data->left_to_read = sizeof(size_t) - bytes_recv;
+            buf_data->pos = bytes_recv - current_pos;
+            return;
         } else {
-            checkRecvReturn(bytesRecv);
-            buf_data->pos = 0;
-            buf_data->left_to_read = 0;
-            return;
+            m_config.on_data_cb(connection_info{{"", 0},{"", 0}, -1, socket, TCP}, buf_data->buf + current_pos + sizeof(size_t), msg_size, this, m_config.usr_ctx);
         }
-    } else {
-        memset(buf_data->buf, 0, m_buffersize);
-        bytesRecv = recv(socket, buf, sizeof(size_t), MSG_DONTWAIT);
-        if(bytesRecv > 0){
-            if (bytesRecv < sizeof(size_t)){
-                buf_data->pos = bytesRecv;
-                buf_data->left_to_read = sizeof(size_t) - bytesRecv;
-                return;
-            }
-        } else {
-            checkRecvReturn(bytesRecv);
-            buf_data->pos = 0;
-            buf_data->left_to_read = 0;
-            return;
-        }
-    } 
-    size_t msg_size = std::strtol(buf, NULL, 10);
-    std::cout << "Msg received. Header: " << buf << " expected msg size: " << msg_size << std::endl;
-    memset(buf_data->buf, '\0', m_buffersize);
-    bytesRecv = recv(socket, buf_data->buf, msg_size, MSG_DONTWAIT);
-    if(bytesRecv > 0){
-        if (bytesRecv < msg_size){
-            buf_data->pos = bytesRecv;
-            buf_data->left_to_read = msg_size - bytesRecv;
-            return;
-        }
-        m_config.on_data_cb(connection_info{{"", 0},{"", 0}, -1, socket, TCP}, buf_data->buf, msg_size, this, m_config.usr_ctx);
-    } else {
-        checkRecvReturn(bytesRecv);
+        current_pos += sizeof(size_t) + msg_size;
     }
     buf_data->pos = 0;
     buf_data->left_to_read = 0;
-    memset(buf_data->buf, '\0', m_buffersize);
+    std::memset(buf_data->buf, '\0', m_buffersize);
     return;
-
 }
 
 
@@ -229,12 +208,6 @@ void NetworkPosix::close_handle(network_handle* handle){
     }, *handle);
 }
 
-ssize_t NetworkPosix::send_msg(int socket, char* data, size_t size){
-    iovec iov = {data, size};
-    msghdr msg = {NULL, 0, &iov, 1, NULL, 0, 0};
-    return sendmsg(socket, &msg, 0); 
-}
-
 void NetworkPosix::send_connect(connection_info& handle){
     auto sock = socket(AF_INET, (SOCK_STREAM | SOCK_NONBLOCK), 0);
     if (sock < 0){
@@ -269,7 +242,7 @@ void NetworkPosix::send_connect(connection_info& handle){
     if(m_on_connnection_established_cb != NULL){
         m_on_connnection_established_cb(connection_info{{"", 0},{inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port)}, -1, sock}, this, m_config.usr_ctx);
     }
-    auto ctx = ev_context{sock, NULL, std::bind(&NetworkPosix::onData, this, std::placeholders::_1, std::placeholders::_2)};
+    auto ctx = ev_context{sock, NULL, std::bind(&NetworkPosix::on_data, this, std::placeholders::_1, std::placeholders::_2)};
     m_evloop.register_fd(ctx);
 }
 
@@ -296,7 +269,7 @@ ssize_t NetworkPosix::send_data(const char* data, size_t size, network_handle* h
                     throw;
                 }
                 char header[sizeof(size_t)];
-                snprintf(header, sizeof(header), "%zu", size);
+                snprintf(header, sizeof(header), "%zu", 9);
                 std::unique_lock<std::mutex> lck(m_send_mutex_map[handle.socket]);
                 send(handle.socket, header, sizeof(size_t), 0);
                 return send(handle.socket, data, size, 0);

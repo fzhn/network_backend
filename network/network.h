@@ -54,12 +54,14 @@ private:
 
 class NetworkUCX: public Network {
 public:
-    NetworkUCX(network_config& config) : Network(config){}
-    ~NetworkUCX(){}
-    void run(std::string name) override {}
-    void register_handle(network_handle* handle) override {}
-    void close_handle(network_handle* handle) override {}
-    ssize_t send_data(const char* data, size_t size, network_handle* handle) override {return 0;}
+    NetworkUCX(network_config& config);
+    ~NetworkUCX();
+    void run(std::string name) override;
+    void register_handle(network_handle* handle) override;
+    void close_handle(network_handle* handle) override;
+    ssize_t send_data(const char* data, size_t size, network_handle* handle) override;
+private:
+    void establish_oob_connection(network_handle* handle);
 };
 
 class NetworkPosix: public Network {
@@ -86,10 +88,9 @@ private:
     std::function<void(connection_info info,Network* backend, void* usr_ctx)> m_on_connection_refused_cb;
 
     int createListenSocket(connection_info* connection);
-    ssize_t send_msg(int socket, char* data, size_t size);
-    void checkRecvReturn(int ret);
+    void check_recv_return(int ret);
     void send_connect(connection_info& handle);
-    void onConnectionRequest(int lsocket, void* data);
-    void onConnectionClosed(int socket, void* data);
-    void onData(int socket, void* data);
+    void on_connection_request(int lsocket, void* data);
+    void on_connection_closed(int socket, void* data);
+    void on_data(int socket, void* data);
 };
