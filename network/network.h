@@ -46,7 +46,7 @@ private:
     void on_send_socket_cm_event(int,void*);
     int read_cm_event(struct fid_eq* eq, struct fi_info** info, struct fi_eq_err_entry* err_entry);
     void handle_connreq();
-    int connect_send_socket(send_socket* socket);
+    int connect_endpoint(endpoint* ep, fid_domain* domain);
     std::map<socket_addr, listen_socket> m_lsockets;
     std::map<socket_addr, send_socket> m_ssockets;  
 };
@@ -90,6 +90,7 @@ private:
     int createListenSocket(connection_info* connection);
     void check_recv_return(int ret);
     void send_connect(connection_info& handle);
+    void close_handle_ev(int fd, void* data);
     void on_connection_request(int lsocket, void* data);
     void on_connection_closed(int socket, void* data);
     void on_data(int socket, void* data);

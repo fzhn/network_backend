@@ -17,8 +17,15 @@ TEST_CASE( "Test init function", "[init_test]" ) {
     }
     SECTION("Empty handle") {
         network_handle empty_handle = connection_info{{"", 0},{"", 0}, 0, 0};
-        REQUIRE_THROWS_AS(net_backend->register_handle(&empty_handle), std::runtime_error);
+        REQUIRE_THROWS_AS(net_backend->register_handle(&empty_handle), std::invalid_argument);
     }
+    SECTION("Wrong input handle") {
+        network_handle false_handle = connection_info{{"Hello World", 0},{"", 0}, 0, 0};
+        REQUIRE_THROWS_AS(net_backend->register_handle(&false_handle), std::runtime_error);
+        network_handle false_send_handle = connection_info{{"", 0},{"Hello World", 0}, 0, 0};
+        REQUIRE_THROWS_AS(net_backend->register_handle(&false_send_handle), std::runtime_error);
+    }
+    
     SECTION("Working example") {
         network_handle working_handle = connection_info{{"127.0.0.1", 1337},{"127.0.0.1", 54321}, -1, -1};
         net_backend->register_handle(&working_handle);

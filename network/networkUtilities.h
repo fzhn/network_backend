@@ -47,6 +47,7 @@ struct connection_info{
 
 struct listen_socket;
 struct send_socket;
+struct endpoint;
 struct domain_ctx{
   struct fid_fabric fabric;
   struct fid_domain domain;

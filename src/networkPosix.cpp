@@ -68,16 +68,18 @@ void NetworkPosix::on_connection_request(int lsocket, void* data){
         return;
     }
     std::cout << "Remote address: " << inet_ntoa(remote.sin_addr) << " and port: " << ntohs(remote.sin_port) << std::endl;
-
-    m_buf_map[socket].pos = 0;
-    m_buf_map[socket].left_to_read = 0;
-    m_buf_map[socket].size = m_buffersize;
-    m_buf_map[socket].buf_array.resize(m_buffersize, '\0');
-    m_buf_map[socket].buf = m_buf_map[socket].buf_array.data();
-
     auto ctx = ev_context{socket, NULL, std::bind(&NetworkPosix::on_data, this, std::placeholders::_1, std::placeholders::_2), std::bind(&NetworkPosix::on_connection_closed, this, std::placeholders::_1, std::placeholders::_2)};
     m_evloop.register_fd(ctx);
-    m_connection_map[socket_addr{inet_ntoa(remote.sin_addr), ntohs(remote.sin_port)}] = socket;
+    {
+        std::unique_lock<std::mutex> lck(m_mux);
+        m_buf_map[socket].pos = 0;
+        m_buf_map[socket].left_to_read = 0;
+        m_buf_map[socket].size = m_buffersize;
+        m_buf_map[socket].buf_array.resize(m_buffersize, '\0');
+        m_buf_map[socket].buf = m_buf_map[socket].buf_array.data();
+        m_connection_map[socket_addr{inet_ntoa(remote.sin_addr), ntohs(remote.sin_port)}] = socket;
+    }
+
     if(m_on_connnection_established_cb != NULL){
         m_on_connnection_established_cb(connection_info{{"", 0},{inet_ntoa(remote.sin_addr), ntohs(remote.sin_port)}, lsocket, socket}, this, m_config.usr_ctx);
     }
@@ -91,9 +93,9 @@ void NetworkPosix::on_connection_closed(int socket, void* data){
     log_info("on_connection_closed: %d", socket);
     auto pos = std::find_if(m_connection_map.begin(), m_connection_map.end(), [=](auto& connection){return connection.second == handle.socket;});
     if(pos != m_connection_map.end()){ //need to check manually, since std::map::erase() does not take map.end()
+        std::unique_lock<std::mutex> lck(m_mux);
         m_connection_map.erase(pos);
     }
-    handle.socket = -1;
 }
 
 void NetworkPosix::check_recv_return(int ret){
@@ -163,17 +165,38 @@ void NetworkPosix::run(std::string name){
 void NetworkPosix::register_handle(network_handle* handle){
     std::visit(
     overloaded{[&](connection_info& handle) {
-           if ( createListenSocket(&handle) < 0){
-               throw std::runtime_error("Could not establish listen socket");
-           }
+            if (handle.local_addr.ip != "") {
+                if ( createListenSocket(&handle) < 0){
+                    throw std::runtime_error("Could not establish listen socket");
+                }
+            } else if(handle.remote_addr.ip != "") {
+                try{
+                    send_connect(handle);
+                } catch (std::runtime_error& e){
+                    throw;
+                }
+            } else {
+                throw std::invalid_argument("Network handle does not conatain local or remote IP.");
+            }
         },
         [](std::monostate& handle) {
             throw std::invalid_argument("Network handle is not initialized");
         },
         [](auto& handle) {
-            throw std::invalid_argument("Wrong handle for this netwokr provider. Expecting TCP handle.");
+            throw std::invalid_argument("Wrong handle for this network provider. Expecting TCP handle.");
         },
     }, *handle);
+}
+
+void NetworkPosix::close_handle_ev(int fd, void* data){
+    auto handle = reinterpret_cast<connection_info*>(data);
+    std::unique_lock<std::mutex> lck(m_mux);
+    m_evloop.remove_fd(handle->socket);
+    auto pos = std::find_if(m_connection_map.begin(), m_connection_map.end(), [=](auto& connection){return connection.second == handle->socket;});
+    if(pos != m_connection_map.end()){ //need to check manually, since std::map::erase() does not take map.end()
+        m_connection_map.erase(pos);
+    }
+    m_buf_map.erase(handle->socket);
 }
 
 
@@ -183,27 +206,23 @@ void NetworkPosix::close_handle(network_handle* handle){
             if (handle.socket < 0 && handle.lsocket < 0){
                 throw std::invalid_argument("Empty network handle.");
             }
-            std::unique_lock<std::mutex> lck(m_mux);
+
             if(handle.lsocket >= 0){
                 m_evloop.remove_fd(handle.lsocket);
                 m_lsockets.erase(std::remove(m_lsockets.begin(), m_lsockets.end(), handle.lsocket), m_lsockets.end());
                 handle.lsocket = -1;
             }
             if(handle.socket >= 0){
-                m_evloop.remove_fd(handle.socket);
-                //m_sockets.erase(std::remove(m_sockets.begin(), m_sockets.end(), handle.socket), m_sockets.end());
-                auto pos = std::find_if(m_connection_map.begin(), m_connection_map.end(), [=](auto& connection){return connection.second == handle.socket;});
-                if(pos != m_connection_map.end()){ //need to check manually, since std::map::erase() does not take map.end()
-                    m_connection_map.erase(pos);
-                }
+                auto close_signal = EvSignal(NULL,  std::bind(&NetworkPosix::close_handle_ev, this, std::placeholders::_1, std::placeholders::_2), &m_evloop, true, true);
+                close_signal.fire();
                 handle.socket = -1;
-            } 
+            }
         },
         [](std::monostate& handle) {
             throw std::invalid_argument("Network handle is not initialized");
         },
         [](auto& handle) {
-            throw std::invalid_argument("Wrong handle for this netwokr provider. Expecting TCP handle.");
+            throw std::invalid_argument("Wrong handle for this network provider. Expecting TCP handle.");
         },
     }, *handle);
 }
@@ -269,7 +288,7 @@ ssize_t NetworkPosix::send_data(const char* data, size_t size, network_handle* h
                     throw;
                 }
                 char header[sizeof(size_t)];
-                snprintf(header, sizeof(header), "%zu", 9);
+                snprintf(header, sizeof(header), "%zu", size);
                 std::unique_lock<std::mutex> lck(m_send_mutex_map[handle.socket]);
                 send(handle.socket, header, sizeof(size_t), 0);
                 return send(handle.socket, data, size, 0);
