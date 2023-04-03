@@ -21,7 +21,7 @@ public:
     network_config m_config;
     Network(network_config config) : m_config(config){}
     static std::unique_ptr<Network> create(network_type type, network_config& config);
-    virtual void run(std::string name) = 0;
+    virtual void run() = 0;
     virtual void register_handle(network_handle* handle) = 0;
     virtual void close_handle(network_handle* handle) = 0;
     virtual ssize_t send_data(const char* data, size_t size, network_handle* handle) = 0;
@@ -31,10 +31,10 @@ class NetworkLibfabric: public Network{
 public:
     NetworkLibfabric(network_config& config);
     ~NetworkLibfabric();
-    void run(std::string name);
-    void register_handle(network_handle* handle);
-    void close_handle(network_handle* handle);
-    ssize_t send_data(const char* data, size_t size, network_handle* handle);
+    void run() override; 
+    void register_handle(network_handle* handle) override;
+    void close_handle(network_handle* handle) override;
+    ssize_t send_data(const char* data, size_t size, network_handle* handle) override;
 private:
     Eventloop m_evloop;
     domain_ctx m_send_domain;
@@ -42,6 +42,7 @@ private:
     fi_info* m_info;
     void init_listen(listen_socket* socket, connection_info* connection);
     void init_send(send_socket* socket, connection_info* connection);
+    void register_buffers(recv_socket* rsocket);
     void on_listen_socket_cm_event(int,void*);
     void on_send_socket_cm_event(int,void*);
     int read_cm_event(struct fid_eq* eq, struct fi_info** info, struct fi_eq_err_entry* err_entry);
@@ -56,7 +57,7 @@ class NetworkUCX: public Network {
 public:
     NetworkUCX(network_config& config);
     ~NetworkUCX();
-    void run(std::string name) override;
+    void run() override;
     void register_handle(network_handle* handle) override;
     void close_handle(network_handle* handle) override;
     ssize_t send_data(const char* data, size_t size, network_handle* handle) override;
@@ -68,13 +69,12 @@ class NetworkPosix: public Network {
 public:
     NetworkPosix(network_config& config);
     ~NetworkPosix();
-    void run(std::string name) override;
+    void run() override;
     void register_handle(network_handle* handle) override;
     void close_handle(network_handle* handle) override;
     ssize_t send_data(const char* data, size_t size, network_handle* handle) override;
 private:
     Eventloop m_evloop;
-    std::string m_name;
     std::mutex m_mux;
     size_t m_buffersize;
     std::vector<int> m_lsockets;

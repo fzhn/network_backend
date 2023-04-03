@@ -20,7 +20,7 @@ struct endpoint{
 
 struct listen_socket{
     endpoint ep;
-    struct fid_pep *pep;
+    fid_pep *pep;
 
     int fi_errno;
     char* fi_message;
@@ -31,6 +31,12 @@ struct listen_socket{
 struct send_socket{
     endpoint ep;
     ev_context eq_ev_ctx;
+};
+
+struct recv_socket{
+    endpoint ep;
+    ev_context eq_ev_ctx;
+    fid** mr;
 };
 
 
@@ -80,6 +86,11 @@ void NetworkLibfabric::handle_connreq()
     //     FATAL("Listen socket, connection rejected, error ", ret);;
     // }
     // log_dbg("connection accepted. Lsocket EQ: %d with evloop %d, rsocket EQ %d with evloop %d", lsocket->eqfd, lsocket->ctx->evloop.epollfd, rsocket->eqfd, rsocket->ctx->evloop.epollfd);
+}
+
+void NetworkLibfabric::register_buffers(recv_socket* rsocket)
+{
+
 }
 
 
@@ -190,7 +201,7 @@ NetworkLibfabric::NetworkLibfabric(network_config& config) : Network(config),
 NetworkLibfabric::~NetworkLibfabric(){
     m_evloop.stop();
 }
-void NetworkLibfabric::run(std::string name){
+void NetworkLibfabric::run(){
 
     m_evloop.evloop_run();
 }

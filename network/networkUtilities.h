@@ -16,6 +16,9 @@ struct socket{
     int ID;
 };
 
+
+// Posix
+
 struct socket_addr{
     std::string ip;
     unsigned short port;
@@ -45,8 +48,11 @@ struct connection_info{
     network_mode mode;
 };
 
+// Libfabric
+
 struct listen_socket;
 struct send_socket;
+struct recv_socket;
 struct endpoint;
 struct domain_ctx{
   struct fid_fabric fabric;
@@ -58,6 +64,19 @@ struct domain_ctx{
 
   int nb_sockets;
 };
+
+struct connection_info_libfarbic{
+    const socket_addr local_addr;
+    const socket_addr remote_addr;
+    listen_socket* lsocket;
+    send_socket* ssocket;
+    recv_socket* rsocket;
+    network_mode mode;
+    size_t buf_size;
+    size_t num_buf;
+};
+
+// General data structures
 
 enum network_type {NONE, POSIX_SOCKETS, LIBFABRIC, UCX};
 

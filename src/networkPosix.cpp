@@ -5,17 +5,17 @@
 #include <arpa/inet.h>
 
 NetworkPosix::NetworkPosix(network_config& config) :    Network(config),
-                                                    m_evloop(Eventloop()),
-                                                    m_buffersize(config.buffersize),
-                                                    m_on_data_cb(config.on_data_cb),
-                                                    m_on_connnection_established_cb(config.on_connnection_established_cb),
-                                                    m_on_connection_closed_cb(config.on_connection_closed_cb),
-                                                    m_on_connection_refused_cb(config.on_connection_refused_cb)
+                                                        m_evloop(Eventloop()),
+                                                        m_buffersize(config.buffersize),
+                                                        m_on_data_cb(config.on_data_cb),
+                                                        m_on_connnection_established_cb(config.on_connnection_established_cb),
+                                                        m_on_connection_closed_cb(config.on_connection_closed_cb),
+                                                        m_on_connection_refused_cb(config.on_connection_refused_cb)
 
 {
     log_set_level(LOG_INFO);
     if (config.mode != TCP){
-        log_error("UNIX sockets only support TCP. Continue with using TCP.");
+        log_error("Posix sockets only support TCP. Continue with using TCP.");
     }
 }
 
@@ -55,6 +55,7 @@ int NetworkPosix::createListenSocket(connection_info* connection){
     return listensocket;
 }
 
+// Callback for connection requests from listen socket
 void NetworkPosix::on_connection_request(int lsocket, void* data){
     sockaddr_in remote;
     socklen_t remoteSize = sizeof(remote);
@@ -100,17 +101,18 @@ void NetworkPosix::on_connection_closed(int socket, void* data){
 
 void NetworkPosix::check_recv_return(int ret){
     if (ret == -1){
-        log_error("There was a connection issue for the %s", m_name.c_str());
+        log_error("Connection issue observed.");
     } else if (ret < 0){
         log_error("Unexpected problem.");
         char buffer[256];
-        std::cout << "Recv of  " << m_name << " returned: " << ret;
+        std::cout << "Recv returned: " << ret;
         char * errMsg = strerror_r(errno, buffer, 256);
         std::cout << ": " << errMsg << std::endl;
     }
 } 
 
-
+// When data arrives we need to check the header first to extract the message and then check if we received the entire message. 
+// If everything is comeplete, we can call the user callback
 void NetworkPosix::on_data(int socket, void* data){
     if(m_buf_map.count(socket) == 0){
         log_error("No buffer associated to this socket: %d.", socket);
@@ -157,18 +159,19 @@ void NetworkPosix::on_data(int socket, void* data){
 
 
 
-void NetworkPosix::run(std::string name){
-    m_name = name;
+void NetworkPosix::run(){
     m_evloop.evloop_run();
 }
 
 void NetworkPosix::register_handle(network_handle* handle){
     std::visit(
     overloaded{[&](connection_info& handle) {
+            // local ip address means we need a listen socket to await incomming connections
             if (handle.local_addr.ip != "") {
                 if ( createListenSocket(&handle) < 0){
                     throw std::runtime_error("Could not establish listen socket");
                 }
+            // remote ip address means that we need a socket which connects to a remote listen socket    
             } else if(handle.remote_addr.ip != "") {
                 try{
                     send_connect(handle);
@@ -227,6 +230,7 @@ void NetworkPosix::close_handle(network_handle* handle){
     }, *handle);
 }
 
+//To send messages over a stream socket we need to add our own header that includes the message size, so that the receiving side knows when a message is completed.
 void NetworkPosix::send_connect(connection_info& handle){
     auto sock = socket(AF_INET, (SOCK_STREAM | SOCK_NONBLOCK), 0);
     if (sock < 0){

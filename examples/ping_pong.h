@@ -35,7 +35,7 @@ class PingPong{
       if(m_server){
         network_handle handle = connection_info{{"127.0.0.1", 1337},{"127.0.0.1", 54321}, 0, 0, TCP};
         m_net_backend->register_handle(&handle);
-        m_net_backend->run("Server");
+        m_net_backend->run();
       } else {
         network_handle handle = connection_info{{"127.0.0.1", 54321},{"127.0.0.1", 1337}, 0, 0, TCP};
         size_t test = 0004;
@@ -53,7 +53,7 @@ class PingPong{
         }
         std::cout << std::endl;
 
-        m_net_backend->run("client");
+        m_net_backend->run();
       }
 
     }
