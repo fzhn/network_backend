@@ -22,14 +22,6 @@ struct socket{
 struct socket_addr{
     std::string ip;
     unsigned short port;
-    bool operator=(const socket_addr& rhs) const
-    {
-        if (ip == rhs.ip && port == rhs.port)
-        {
-           return true;
-        }
-        return false;
-    }
     bool operator<(const socket_addr& rhs) const
     {
         if (port < rhs.port)
